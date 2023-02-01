@@ -1,9 +1,10 @@
 /*
     Created: 20221211
+    Last modification: 20230105
     Definition of advenced Graph algorithms
 */
 
-#include "Graph_Vertex_basics_20221211.hpp"
+#include "Graph_Vertex_basics_20230112.hpp"
 
 inline void Graph::DFS_TS(int s, map<const int, bool> &E, deque<int>&TO, bool reversed=false) {
     E[s] = true;
@@ -152,6 +153,7 @@ inline void Graph::DFS_FordFulkerson(Graph &Res_Aug_Graph, int &v, const int s, 
     }
 }
 
+
 inline void Graph::build_from_adj_list_without_weight(string dir) {
     //typedef stringstream SS;
     string s;
@@ -202,6 +204,13 @@ inline void Graph::build_from_edge_list_with_weight(string dir) {
     return;
 }
 
+inline void Graph::update_path(const int u, const int v, map<const int, vector<int>*> &P) {
+    vector<int> *ptr_path_new = new vector<int> (*P[u]);
+    ptr_path_new->push_back(static_cast<int> (v));
+
+    delete P[v];
+    P[v] = ptr_path_new;
+}
 
 inline Graph Graph::undirectedfy() {
     // Since the Verteices are stored as **pointers** in Graph, 
@@ -219,8 +228,8 @@ inline Graph Graph::undirectedfy() {
     return G_temp.copy();
 }
 
-inline bool Graph::is_connected(bool do_undirectify=true, int fixed_sourse=-1) {
-    // Graph G_temp; This raises error of some undifined type conversion things, must do Graph G_temp = this->copy(), i.e. assign the Graph right after it is declared,
+inline bool Graph::is_connected(bool do_undirectify=false, int fixed_sourse=-1) {
+    // Graph G_temp; This raises error of some undefined type conversion things, must do Graph G_temp = this->copy(), i.e. assign the Graph right after it is declared,
     // But not assign value (memory) to the variable in an if-else's scope. 
     /*
     Okay, let's put it this way. When the Graph (G_temp) is declared outside of the if-else's scope (marked by {}), 
@@ -268,20 +277,21 @@ inline bool Graph::is_connected(bool do_undirectify=true, int fixed_sourse=-1) {
     // results in conneted or not
 
     // initialize Explored map
-    if (fixed_sourse != -1) {
-        vertieces.push_back(fixed_sourse);
-    }
-    else {
-        vertieces = G_temp.get_v_keys();
-    }
-    
+    vertieces = G_temp.get_v_keys();
     for (int i : vertieces) {
         E[i] = false;
     }
 
     int counter = G_temp.get_size();
 
-    int s = vertieces.front();
+    int s;
+    if (fixed_sourse != -1) {
+        s = fixed_sourse;
+    }
+    else {
+        s = vertieces.front();
+    }
+    
     E[s] = true;
     --counter;
 
@@ -307,12 +317,58 @@ inline bool Graph::is_connected(bool do_undirectify=true, int fixed_sourse=-1) {
     return false;
 }
 
+inline vector<int> Graph::get_connected_vertices_with_fixed_source(int s) {
+    Graph G_temp = this->copy();
+
+    map<const int, bool> E;
+    vector<int> vertieces;
+
+    // BFS
+    // baically this compares the number of nodes obtained by BFS outsourced
+    // from an arbitary node with the number of nodes in the graph
+    // so first map every node to false, checking whether there is any remaining false 
+    // results in conneted or not
+
+    // initialize Explored map
+    vertieces = G_temp.get_v_keys();
+    for (int i : vertieces) {
+        E[i] = false;
+    }
+    
+    E[s] = true;
+
+    queue<int> Q; Q.push(s);
+
+    while (!Q.empty()) {
+        // safe implementation of pop!
+        int v = Q.front(); Q.pop();
+
+        for (int e : G_temp.get_v(v)->get_head_keys()) {
+            if (!E[e]) {
+                E[e] = true;
+                Q.push(e);
+            }
+        }
+    }
+
+    vertieces = vector<int> {};
+    for (auto i : E) {
+        if (i.second) {
+            vertieces.push_back(i.first);
+        }
+    }
+
+    return vertieces;
+}
+
 inline map<const int, int> Graph::Dijkstra(const int s) {
     map<const int, int> L;   // distance from s to else
     map<const int, bool> E;     // explored for not
-    vector<int> V = this->get_v_keys(); // V is not a pointer to _vertices
-
-    for (int i : V) {
+    // Get rid of all vertices in V that are not reachable from s 
+    // These vertices will have distance infinity in L
+    vector<int> V = this->get_connected_vertices_with_fixed_source(s); 
+    
+    for (int i : this->get_v_keys()) {
         E[i] = false;
         L[i] = numeric_limits<int>::max();   // numeric_limits<int>::infinity() not working properly
     }
@@ -324,6 +380,8 @@ inline map<const int, int> Graph::Dijkstra(const int s) {
         curr_min = numeric_limits<int>::max();
         
         // find the shortest path (global?)
+        // this procedure guarantees we update new paths only extending 
+        // from the existing shortest path
         for (int v : V) {
             if (L[v] < curr_min) {
                 curr_min = L[v];
@@ -352,6 +410,67 @@ inline map<const int, int> Graph::Dijkstra(const int s) {
     }
     
     return L;
+}
+
+inline pair<map<const int, int>, map<const int, vector<int>*>> Graph::Dijkstra_with_path(const int s) {
+    map<const int, int> L;   // distance from s to else
+    map<const int, vector<int>*> P;
+    map<const int, bool> E;     // explored for not
+    // Get rid of all vertices in V that are not reachable from s 
+    // These vertices will have distance infinity in L and empty path in P
+    vector<int> V = this->get_connected_vertices_with_fixed_source(s); 
+
+    for (int i : this->get_v_keys()) {
+        E[i] = false;
+        L[i] = numeric_limits<int>::max();   // numeric_limits<int>::infinity() not working properly
+        P[i] = new vector<int>;
+    }
+
+    L[s] = 0;
+    P[s]->push_back(s);
+
+    int curr_min, u;
+    while (V.size()) {
+        curr_min = numeric_limits<int>::max();
+        
+        // find the shortest path (global?)
+        // this procedure guarantees we update new paths only extending 
+        // from the existing shortest path (greedy)
+        // all the verteces in V are not explored
+        for (int v : V) {
+            if (L[v] < curr_min) {
+                curr_min = L[v];
+                u = v;
+            }
+        }
+        
+        // pop u form V
+        int index = 0;
+        for (int i : V) {
+            if (i == u) {
+                V.erase(V.begin() + index);
+            }
+            ++index;
+        }
+        
+        E[u] = true;
+        
+        // path update
+        // have edge (u, v), if (u, v) gives a shorter path from s to v
+        // the new shortest path (s -> v) = (s -> u) + v  
+        for (int v : this->get_v(u)->get_head_keys()) {
+            if (E[v]) {continue;}
+
+            int l = this->get_e(u, v);
+            if (L[u] < L[v] - l) {
+                L[v] = L[u] + l;
+                this->update_path(u, v, P);
+            }
+        }
+    }
+
+    pair<map<const int, int>, map<const int, vector<int>*>> Pair = make_pair(L, P);
+    return Pair;
 }
 
 inline deque<int> Graph::TS(map<const int, bool> &E, bool reversed=false) {
@@ -425,19 +544,32 @@ inline map<const int, bool> Graph::get_init_explored_map() {
 }
 
 inline int Graph::FordFulkerson(const int s, const int t) {
-    int v;    // s = source, t = terminate (not necessarily sink node), v = regular vertex
-
-    if (!(this->has_v(s) && this->has_v(t))) {
-        cout << "Nodes not found in the Graph" << endl;
-        return -1;
+    int v;    // source, terminate (sink node), regular vertex
+    int n_s = 1/*0*/, n_t = 1/*0*/;
+    
+    map<const int, bool> E_init = get_init_explored_map();
+    
+    
+    // For debugging
+    //cout << "s: " << s << " t: " << t << endl; 
+    
+    // _key = -1 meaning the node is not properly initialized
+    //if (s.get_key() == -1 || t.get_key() == -1) {
+    //    cout << "sourse/sink node not found" << endl;
+    //    return -1;
+    //}
+    /*
+    if ((n_s-1) || (n_t-1)) {
+        cout << "sourse/sink node not found or more than one are found" << endl;
+        return -1;// *(new Graph);
     }
+    */
 
     Graph Res_Aug_Graph = this->copy();
-    map<const int, bool> E_init = get_init_explored_map();
     vector<int> Stack, Path;  // for adding augmented edge
 
     // see any reamining path from s -> t
-    bool no_s2t_path_remaining = false;
+    bool no_s2t_path_remains = false;
 
     // Checkpoints for debugging
     //int c0 = 0, c1 = 0, c2 = 0;
@@ -445,13 +577,13 @@ inline int Graph::FordFulkerson(const int s, const int t) {
     // Exlaination:
     // If the no_s2t_path_remaining stays true, i.e. the if statement for where no_s2t_path_remaining is assigned with false is never entered, 
     // Then the Stack will first be emptyed, breaking the inner loop, and the no_s2t_path_remaining = true breaks the outer while loop.
-    while (!no_s2t_path_remaining){//Res_Aug_Graph.FordFulkerson_is_connected(s, t)) {
+    while (!no_s2t_path_remains){//Res_Aug_Graph.FordFulkerson_is_connected(s, t)) {
         //cout << "c0: " << ++c0 << endl;
 
         // Stack should be empty right now
         // Start a new DFS on the updated Graph
         Stack.push_back(s);
-        no_s2t_path_remaining = true;
+        no_s2t_path_remains = true;
 
         map<const int, bool> E (E_init);
 
@@ -463,7 +595,7 @@ inline int Graph::FordFulkerson(const int s, const int t) {
         // Exlaination:
         // !Stack.empty(): on the last iteration (where there is no s-t path remaining, Stack will be empty (else won't))
         // no_s2t_path_remaining: no_s2t_path_remaining? assume it is true and let's find out in this while loop!
-        while (no_s2t_path_remaining && !Stack.empty()) {
+        while (no_s2t_path_remains && !Stack.empty()) {
 
             //cout << "c1: " << ++c1 << endl;
 
@@ -476,7 +608,7 @@ inline int Graph::FordFulkerson(const int s, const int t) {
             }
             */
 
-            Res_Aug_Graph.DFS_FordFulkerson(Res_Aug_Graph, v, s, t, min_cut, E, Stack, Path, no_s2t_path_remaining);
+            Res_Aug_Graph.DFS_FordFulkerson(Res_Aug_Graph, v, s, t, min_cut, E, Stack, Path, no_s2t_path_remains);
         }
     }
 
@@ -511,4 +643,65 @@ inline int Graph::FordFulkerson(const int s, const int t) {
     return MAX_FLOW;
 }
 
+inline int Graph::EdmondsKarp(const int s, const int t) {
+    map<const int, bool> E_init = get_init_explored_map();
+    Graph Res_Aug_Graph = this->copy();
+    vector<int> Path;  // for adding augmented edge
+    pair<map<const int, int>, map<const int, vector<int>*>> Pair;
+
+
+    while (true){
+        int min_cut = numeric_limits<int>::max();
+        Pair = Res_Aug_Graph.Dijkstra_with_path(s);
+
+        // no more s->t path
+        if (Pair.first[t] == min_cut) {
+            break;
+        }
+
+        Path = *Pair.second[t];
+        for (auto i = Path.begin(); i != Path.end()-1; ++i) {
+            int curr_cut = Res_Aug_Graph.get_e(*i, *(i+1));
+            min_cut = min_cut > curr_cut? curr_cut: min_cut;
+        }
+        
+        // the Path is reversed for update_Res_Aug_Graph in FordForkerson, but normal in Dijkstra
+        reverse(Path.begin(), Path.end());
+        Res_Aug_Graph.update_Res_Aug_Graph(Res_Aug_Graph, min_cut, Path);
+    }
+
+
+    // And by now the Res_Aug_Graph is completed, without any remaining s-t path.
+    // Update the original Graph only on edges that is included in the original Graph (augmented edges excluded)
+
+    //===================
+    // NOW! Let's fucking find the actual MAX FLOW!!!
+    // Flow = Capacity - Residule
+    Graph Flow_Graph = this->copy();
+
+    for (auto v : Flow_Graph.get_v_keys()) {
+        for (auto w : Flow_Graph.get_v(v)->get_head_keys()) {
+            if (Res_Aug_Graph.has_e(v, w)) {
+                Flow_Graph.update_e(v, w, Flow_Graph.get_e(v, w) - Res_Aug_Graph.get_e(v, w));
+            }
+        }
+    }
+
+    // Max flow equals the sum of flows emaneting from s in the FLow Graph
+    int MAX_FLOW = 0;
+    for (auto w : Flow_Graph.get_v(s)->get_head_keys()) {
+        MAX_FLOW += Flow_Graph.get_e(s, w);
+    }
+
+    return MAX_FLOW;
+}
+
+inline vector<vector<int>> Graph::get_adj_matrix(vector<int> column_v, vector<int> row_v) {
+    if (column_v.empty() || row_v.empty() || row_v.size() != column_v.size()) {
+        throw invalid_argument("Invalid bipair");
+        return *(new vector<vector<int>> {});
+    }
+
+    
+}
 
